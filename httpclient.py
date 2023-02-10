@@ -24,7 +24,11 @@ import socket
 import re
 # you may use urllib to encode data appropriately
 import urllib.parse
-import json
+
+# https://stackoverflow.com/questions/39090366/how-to-parse-raw-http-request-in-python-3
+import email
+from io import StringIO
+
 
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
@@ -45,7 +49,7 @@ class HTTPClient(object):
         return None
     
     def connect_url(self, url):
-        if 'http' != url.lower()[0:7]:
+        if url.lower()[0:7] not in ['http://', 'https:/']:
             url = 'http://' + url
         
         uo = urllib.parse.urlparse(url)
@@ -54,7 +58,7 @@ class HTTPClient(object):
         path = uo.path
         
         if not port:
-            port = 80
+            port = 443 if 'https' in host else 80
             
         if not path:
             path = '/'
@@ -75,7 +79,7 @@ class HTTPClient(object):
     def parse_data(self,data):
         header, body = data.split('\r\n\r\n')
         i = data.index(' ')
-        return data[i+1:i+4], header, body
+        return int(data[i+1:i+4]), header, body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -97,6 +101,11 @@ class HTTPClient(object):
     
     def make_request(self, lines):
         return "\r\n".join(lines)
+    
+    def get_location(self, header):
+        # https://stackoverflow.com/questions/39090366/how-to-parse-raw-http-request-in-python-3
+        header = "\r\n".join(header.split('\r\n')[1:])
+        return dict(email.message_from_string(header).items())['Location']
 
     def GET(self, url, args=None):
         host, path = self.connect_url(url)
@@ -112,8 +121,9 @@ class HTTPClient(object):
         self.sendall(request)
         
         code, header, body = self.get_response()
-        if code in self.redirect_codes:
-            pass
+        
+        if code in self.redirect_codes and url != self.get_location(header):
+            return self.GET(self.get_location(header), args)
         
         return HTTPResponse(code, body)
 
@@ -133,8 +143,9 @@ class HTTPClient(object):
         self.sendall(request)
         
         code, header, body = self.get_response()
+        print(code)
         if code in self.redirect_codes:
-            print(f'!!!!!\n{json.loads(header)}')
+            return self.POST(self.get_location(header), args)
             
         
         return HTTPResponse(code, body)
