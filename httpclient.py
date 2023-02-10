@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf-8
 # Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
+# Copyright 2023 Junhyeon Cho
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,20 +35,46 @@ class HTTPResponse(object):
 
 class HTTPClient(object):
     #def get_host_port(self,url):
+    
+    redirect_codes = [301, 302, 307, 308]
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((host, port))
         return None
+    
+    def connect_url(self, url):
+        if 'http' != url.lower()[0:7]:
+            url = 'http://' + url
+        
+        uo = urllib.parse.urlparse(url)
+        host = uo.hostname
+        port = uo.port
+        path = uo.path
+        
+        if not port:
+            port = 80
+            
+        if not path:
+            path = '/'
+        
+        self.connect(host, port)
+        
+        return host, path
+        
+    
+    def get_response(self):
+        data = self.recvall(self.socket)
+        self.close()
+        print(data)
+        
+        return self.parse_data(data)
+        
 
-    def get_code(self, data):
-        return None
-
-    def get_headers(self,data):
-        return None
-
-    def get_body(self, data):
-        return None
+    def parse_data(self,data):
+        body = data.split('\r\n\r\n')[1]
+        i = data.index(' ')
+        return data[i+1:i+4], body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -66,22 +93,52 @@ class HTTPClient(object):
             else:
                 done = not part
         return buffer.decode('utf-8')
+    
+    def make_request(self, lines):
+        return "\r\n".join(lines)
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        host, path = self.connect_url(url)
+
+        request = self.make_request([
+            f'GET {path} HTTP/1.1', 
+            'Host: ' + host, 
+            'User-Agent: Mozilla/5.0',
+            'Accept: */*',
+            'Connection: close',
+            '\r\n'
+        ])
+        self.sendall(request)
+        
+        code, body = self.get_response()
+        if code in self.redirect_codes:
+            pass
+        
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        host, path = self.connect_url(url)
+        content = urllib.parse.urlencode(args) if args else ''
+
+        request = self.make_request([
+            f'POST {path} HTTP/1.1', 
+            'Host: ' + host, 
+            'User-Agent: Mozilla/5.0',
+            'Accept: */*',
+            'Content-Type: application/x-www-form-urlencoded',
+            'Content-Length: ' + str(len(content)),
+            '\r\n' + content
+        ])
+        self.sendall(request)
+        
+        code, body = self.get_response()
+        if code in self.redirect_codes:
+            pass
+        
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
-        if (command == "POST"):
-            return self.POST( url, args )
-        else:
-            return self.GET( url, args )
+        return self.POST( url, args ) if (command == "POST") else self.GET( url, args )
     
 if __name__ == "__main__":
     client = HTTPClient()
