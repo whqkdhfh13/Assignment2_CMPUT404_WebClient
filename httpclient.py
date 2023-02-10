@@ -24,6 +24,7 @@ import socket
 import re
 # you may use urllib to encode data appropriately
 import urllib.parse
+import json
 
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
@@ -72,9 +73,9 @@ class HTTPClient(object):
         
 
     def parse_data(self,data):
-        body = data.split('\r\n\r\n')[1]
+        header, body = data.split('\r\n\r\n')
         i = data.index(' ')
-        return data[i+1:i+4], body
+        return data[i+1:i+4], header, body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -110,7 +111,7 @@ class HTTPClient(object):
         ])
         self.sendall(request)
         
-        code, body = self.get_response()
+        code, header, body = self.get_response()
         if code in self.redirect_codes:
             pass
         
@@ -131,9 +132,10 @@ class HTTPClient(object):
         ])
         self.sendall(request)
         
-        code, body = self.get_response()
+        code, header, body = self.get_response()
         if code in self.redirect_codes:
-            pass
+            print(f'!!!!!\n{json.loads(header)}')
+            
         
         return HTTPResponse(code, body)
 
